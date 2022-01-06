@@ -1,0 +1,82 @@
+version: '3'
+services:
+  mysql:
+    image: "mysql:5.7"
+    container_name: ops_mysql
+    hostname: app-mysql
+    restart: always
+    ports:
+      - 9706:3306
+    expose: # 暴露端口给其他容器
+      - 9706
+    environment: # 环境变量配置
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: houshuang
+      MYSQL_DATABASE: langsen
+    volumes: # 文件映射(宿主机:容器)
+      - ./app/ops_mysql/data:/var/lib/mysql
+      - ./app/ops_mysql/sql:/docker-entrypoint-initdb.d/
+      - ./app/ops_mysql/conf/my.cnf:/etc/my.cnf
+    networks:
+      - crazy
+
+  redis:
+    image: "redis:5.0"
+    container_name: ops_redis
+    hostname: app-redis
+    restart: always
+    ports:
+      - 1079:6379
+    expose: # 暴露端口给其他容器
+      - 1079
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./app/ops_redis/conf/redis.conf:/etc/redis.conf
+      - ./app/ops_redis/data:/data
+    command: ["redis-server", "/etc/redis.conf"] # 覆盖容器自启动
+    networks:
+      - crazy
+
+  phpfpm:
+    build: ./app/ops_phpfpm
+    container_name: ops_phpfpm
+    hostname: app-phpfpm
+    restart: always
+    depends_on:
+      - mysql
+      - redis
+    links:
+      - mysql
+      - redis
+    volumes:
+      - ./projects:/var/www
+    networks:
+      - default
+      - crazy
+
+  nginx:
+    image: nginx:stable
+    container_name: ops_nginx
+    hostname: app-nginx
+    restart: always
+    depends_on:
+      - phpfpm
+    links:
+      - phpfpm
+    ports:
+      - 80:80
+    volumes:
+      - ./app/ops_nginx/conf:/mnt/nginx/conf
+      - ./logs/nginx:/var/log/nginx
+      - ./projects:/var/www
+      - ./app/ops_nginx/vhosts:/etc/nginx/conf.d
+      - ./app/ops_nginx/conf/nginx.conf:/etc/nginx/nginx.conf
+
+# 默认情况下docker-compose会建立一个默认的网络(default)
+# 这个默认网络会对所有services下面的服务生效
+# 创建自定义容器网络
+networks:
+  crazy:
+    driver: bridge
+
